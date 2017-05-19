@@ -91,6 +91,6 @@ for k,v in entities.items():
     #print( "%s,%s" % (k,token) )
     #This will generate the uri and send to print a QR code for scanning
     totp = pyotp.TOTP(decoded_secret)
-    provisioning_uri=totp.provisioning_uri(k) # => 'otpauth://totp/alice@google.com?secret='+
+    provisioning_uri=totp.provisioning_uri(k)
     #print_QRcode( provisioning_uri )
 
