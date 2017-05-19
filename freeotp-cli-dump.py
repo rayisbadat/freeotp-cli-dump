@@ -17,6 +17,8 @@
 import xml.etree.ElementTree as etree
 import json
 import pyotp
+import pyqrcode
+from pprint import pprint
 
 def decode_secret(secret):
     """
@@ -60,6 +62,12 @@ def decode_secret(secret):
 
     return secret_decoded
 
+def print_QRcode(string):
+    url = pyqrcode.create(string)
+    print( string )
+    print(url.terminal(quiet_zone=1))
+    print( "\n-----\n" )
+
 
 #import the freeotp xml backup file
 #FIXME: Add getopts or ARGV
@@ -81,4 +89,8 @@ for k,v in entities.items():
     ## we really wnat to
     print( "%s , %s" % (k,decoded_secret) )
     #print( "%s,%s" % (k,token) )
+    #This will generate the uri and send to print a QR code for scanning
+    totp = pyotp.TOTP(decoded_secret)
+    provisioning_uri=totp.provisioning_uri(k) # => 'otpauth://totp/alice@google.com?secret='+
+    #print_QRcode( provisioning_uri )
 
