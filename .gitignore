@@ -3,3 +3,5 @@
 tokens.xml
 *.xml
 *bak
+*.swp
+*.png
