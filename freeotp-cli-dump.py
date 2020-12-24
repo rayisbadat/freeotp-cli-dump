@@ -14,11 +14,43 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import os
 import xml.etree.ElementTree as etree
 import json
 import pyotp
 import pyqrcode
 from pprint import pprint
+from argparse import ArgumentParser
+
+DEFAULT_XML_FILE = 'tokens.xml'
+
+def parse_cmd_args():
+    """ Routine to setup & use argparse for command line args """
+    parser = ArgumentParser()
+
+    parser.add_argument('-f', '--xml_file',
+                        help=f"xml file with creds, default: {DEFAULT_XML_FILE}",
+                        default=DEFAULT_XML_FILE)
+    parser.add_argument('-q', '--show_qr_codes',
+                        help='display text qr codes',
+                        action='store_true')
+    parser.add_argument('-v', '--save_qr_code_images',
+                        help='save QR codes to image files',
+                        action='store_true')
+    parser.add_argument('-l', '--list_entries',
+                        help='list entries without showing any secrets',
+                        action='store_true')
+    parser.add_argument('-s', '--secrets',
+                        help='list of secrets to process, '
+                        'checking each key value in the XML '
+                        'matching if any part of the given string matches. '
+                        'Strings are case sensitive. '
+                        'Format: "-s google reddit" ',
+                        nargs='+')
+
+    args = parser.parse_args()
+    return args
+
 
 def decode_secret(secret):
     """
@@ -62,35 +94,70 @@ def decode_secret(secret):
 
     return secret_decoded
 
-def print_QRcode(string):
+def print_QRcode(string, tag=None, save_image=False):
     url = pyqrcode.create(string)
     print( string )
     print(url.terminal(quiet_zone=1))
     print( "\n-----\n" )
+    if save_image:
+        qr_code_file_name = f"{tag.replace(':','-')}.png"
+        try:
+            url.png(qr_code_file_name,
+                    scale=8,
+                    module_color=[0, 0, 0, 255], 
+                    background=[0xff, 0xff, 0xff])
+        except Exception as exception:
+            print(f"Unable to save {qr_code_file_name}: {exception}")
 
+def main():
+    args = parse_cmd_args()
 
-#import the freeotp xml backup file
-#FIXME: Add getopts or ARGV
-tree=etree.parse('tokens.xml')
-tree_root=tree.getroot()
+    if os.path.isfile(args.xml_file):
+        #import the freeotp xml backup file
+        tree=etree.parse(args.xml_file)
+        tree_root=tree.getroot()
 
-entities=dict()
+        entities=dict()
 
-#Parse json for the the site entries, remove the line that tell freeotp the order
-for leaf in tree_root:
-    values=json.loads(leaf.text)
-    if leaf.attrib['name'] != 'tokenOrder':
-        entities[leaf.attrib['name']]=values
+        #Parse json for the the site entries, remove the line 
+        # that tells freeotp the order
+        for leaf in tree_root:
+            values=json.loads(leaf.text)
+            if leaf.attrib['name'] != 'tokenOrder':
+                entities[leaf.attrib['name']]=values
 
-for k,v in entities.items():
-    decoded_secret = decode_secret( v['secret'] )
-    token = pyotp.TOTP(decoded_secret).now()
-    #FIXME:  Make this a flag so we are not exposeing the secret every time unless
-    ## we really wnat to
-    print( "%s , %s" % (k,decoded_secret) )
-    #print( "%s,%s" % (k,token) )
-    #This will generate the uri and send to print a QR code for scanning
-    totp = pyotp.TOTP(decoded_secret)
-    provisioning_uri=totp.provisioning_uri(k)
-    #print_QRcode( provisioning_uri )
+        processed = 0
+        for k,v in entities.items():
+            if args.secrets:
+                secret_found = False
+                for arg_secret in args.secrets:
+                    if arg_secret in k:
+                        secret_found = True
+                        break
+                if not secret_found:
+                    continue
+            processed += 1
+            decoded_secret = decode_secret( v['secret'] )
+            token = pyotp.TOTP(decoded_secret).now()
+            if not args.list_entries:
+                print(f"{k} , {decoded_secret}")
+                #print( "%s,%s" % (k,token) )
+                
+                # This will generate the uri and send to 
+                # print a QR code for scanning
+                totp = pyotp.TOTP(decoded_secret)
+                provisioning_uri=totp.provisioning_uri(k)
+                if args.show_qr_codes:
+                    print_QRcode(
+                        provisioning_uri,
+                        tag=k, save_image=args.save_qr_code_images)
+            else:
+                print(f"{k}")
+        
+        print(f"{len(entities)} total secrets found, {processed} processed")
 
+    else:
+        print(f"Unable to find {args.xml_file}, please verify location")
+
+if __name__ == "__main__":
+    main()
